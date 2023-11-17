@@ -62,8 +62,8 @@ jobs:
           path: tmp/
 
       #Print /tmp
-      - name: Print /tmp
-        run: ls -la /tmp
+      - name: Print tmp
+        run: ls -la tmp
 
       - name: Checkout branch 'PR'
         uses: actions/checkout@v4
@@ -72,16 +72,16 @@ jobs:
       - name: Generate Infracost cost estimate baseline
         run: |
           infracost breakdown --path=tmp/${{ matrix.folder }} \
-                              --format=json \
-                              --out-file=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
+            --format=json \
+            --out-file=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
 
       # Generate an Infracost diff and save it to a JSON file.
       - name: Generate Infracost diff
         run: |
           infracost diff --path=${{ matrix.folder }} \
-                          --format=json \
-                          --compare-to=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json \
-                          --out-file=/tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
+            --format=json \
+            --compare-to=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json \
+            --out-file=/tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
 
       #Print /tmp
       - name: Print /tmp
