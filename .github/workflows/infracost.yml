@@ -49,6 +49,16 @@ jobs:
         # If you can't use this action, see Docker images in https://infracost.io/cicd
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Checkout branch 'main'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: tmp/
+
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+
   # infracost:
   #   name: Infracost
   #   runs-on: ubuntu-latest
