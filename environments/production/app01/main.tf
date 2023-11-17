@@ -10,7 +10,7 @@ resource "google_service_account" "default" {
 
 resource "google_compute_instance" "default" {
   name         = "my-instance"
-  machine_type = "n2-standard-2"
+  machine_type = "c3-standard-8"
   zone         = "us-central1-a"
 
   tags = ["foo", "bar"]
