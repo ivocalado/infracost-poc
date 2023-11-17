@@ -55,10 +55,6 @@ jobs:
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-      #Print /tmp
-      - name: Print tmp
-        run: ls -la tmp
-
       - name: Checkout branch 'PR'
         uses: actions/checkout@v4
 
@@ -67,7 +63,9 @@ jobs:
         with:
           ref: main
           path: tmp/
-
+      #Print /tmp
+      - name: Print tmp
+        run: ls -la tmp
       # Generate Infracost JSON file as the baseline.
       - name: Generate Infracost cost estimate baseline
         run: |
