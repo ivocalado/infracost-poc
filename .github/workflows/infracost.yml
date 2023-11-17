@@ -43,6 +43,11 @@ jobs:
       - name: Print folders
         run: echo ${{ matrix.folder }}
 
+      - name: Replace slashes with dashes
+        id: replace-slashes
+        run: |
+          echo folder_name=$(echo "${{ matrix.folder }}" | awk '{gsub("/", "-"); print}') | tee -a $GITHUB_OUTPUT
+
       - name: Setup Infracost
         uses: infracost/actions/setup@v2
         # See https://github.com/infracost/actions/tree/master/setup for other inputs
@@ -56,67 +61,31 @@ jobs:
           ref: main
           path: tmp/
 
-      - name: Checkout current branch
+      #Print /tmp
+      - name: Print /tmp
+        run: ls -la /tmp
+
+      - name: Checkout branch 'PR'
         uses: actions/checkout@v4
 
-  # infracost:
-  #   name: Infracost
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     # Required to post comments
-  #     pull-requests: write
+      # Generate Infracost JSON file as the baseline.
+      - name: Generate Infracost cost estimate baseline
+        run: |
+          infracost breakdown --path=/tmp/${{ matrix.folder }} \
+                              --format=json \
+                              --out-file=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
 
-  #   env:
-  #     TF_ROOT: examples/terraform-project/code
-  #     # If you're using Terraform Cloud/Enterprise and have variables or private modules stored
-  #     # on there, specify the following to automatically retrieve the variables:
-  #     #   INFRACOST_TERRAFORM_CLOUD_TOKEN: ${{ secrets.TFC_TOKEN }}
-  #     #   INFRACOST_TERRAFORM_CLOUD_HOST: app.terraform.io # Change this if you're using Terraform Enterprise
+      # Generate an Infracost diff and save it to a JSON file.
+      - name: Generate Infracost diff
+        run: |
+          infracost diff --path=${{ matrix.folder }} \
+                          --format=json \
+                          --compare-to=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json \
+                          --out-file=/tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
 
-  #   steps:
-  #     # If you use private modules, add an environment variable or secret
-  #     # called GIT_SSH_KEY with your private key, so Infracost can access
-  #     # private repositories (similar to how Terraform/Terragrunt does).
-  #     # - name: add GIT_SSH_KEY
-  #     #   run: |
-  #     #     ssh-agent -a $SSH_AUTH_SOCK
-  #     #     mkdir -p ~/.ssh
-  #     #     echo "${{ secrets.GIT_SSH_KEY }}" | tr -d '\r' | ssh-add -
-  #     #     ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-  #     - name: Setup Infracost
-  #       uses: infracost/actions/setup@v2
-  #       # See https://github.com/infracost/actions/tree/master/setup for other inputs
-  #       # If you can't use this action, see Docker images in https://infracost.io/cicd
-  #       with:
-  #         api-key: ${{ secrets.INFRACOST_API_KEY }}
-
-  #     # Checkout the base branch of the pull request (e.g. main/master).
-  #     - name: Checkout base branch
-  #       uses: actions/checkout@v3
-  #       with:
-  #         ref: '${{ github.event.pull_request.base.ref }}'
-
-  #     # Generate Infracost JSON file as the baseline.
-  #     - name: Generate Infracost cost estimate baseline
-  #       run: |
-  #         infracost breakdown --path=${TF_ROOT} \
-  #                             --format=json \
-  #                             --out-file=/tmp/infracost-base.json
-
-  #     # Checkout the current PR branch so we can create a diff.
-  #     - name: Checkout PR branch
-  #       uses: actions/checkout@v3
-
-  #     # Generate an Infracost diff and save it to a JSON file.
-  #     - name: Generate Infracost diff
-  #       run: |
-  #         infracost diff --path=${TF_ROOT} \
-  #                         --format=json \
-  #                         --compare-to=/tmp/infracost-base.json \
-  #                         --out-file=/tmp/infracost.json
-
+      #Print /tmp
+      - name: Print /tmp
+        run: ls -la /tmp
   #     # Posts a comment to the PR using the 'update' behavior.
   #     # This creates a single comment and updates it. The "quietest" option.
   #     # The other valid behaviors are:
