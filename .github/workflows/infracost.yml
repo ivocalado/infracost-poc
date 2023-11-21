@@ -73,10 +73,6 @@ jobs:
             --format=json \
             --out-file=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
 
-      #Print /tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
-      - name: Print /tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
-        run: cat /tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
-
       # Generate an Infracost diff and save it to a JSON file.
       - name: Generate Infracost diff
         run: |
