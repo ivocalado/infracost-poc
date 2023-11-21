@@ -3,7 +3,7 @@ jobs:
   get-folders:
     runs-on: ubuntu-latest
     outputs:
-      folders: ${{ steps.changed-folders.outputs.all_modified_files }}
+      folders: ${{ steps.save-variable.outputs.PATHS }}
 
     steps:
       - name: Checkout repository
@@ -23,9 +23,16 @@ jobs:
           files: environments/**
           json: true
 
+      - id: save-variable
+        run: |
+          echo PATHS=${{ steps.changed-folders.outputs.all_modified_files }} | tee -a $GITHUB_OUTPUT
   infracost:
     runs-on: ubuntu-latest
     needs: get-folders
+    permissions:
+      contents: read
+      # Required to post comments
+      pull-requests: write
     strategy:
       fail-fast: false
       max-parallel: 30
@@ -35,75 +42,59 @@ jobs:
     steps:
       - name: Print folders
         run: echo ${{ matrix.folder }}
-  # infracost:
-  #   name: Infracost
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     contents: read
-  #     # Required to post comments
-  #     pull-requests: write
 
-  #   env:
-  #     TF_ROOT: examples/terraform-project/code
-  #     # If you're using Terraform Cloud/Enterprise and have variables or private modules stored
-  #     # on there, specify the following to automatically retrieve the variables:
-  #     #   INFRACOST_TERRAFORM_CLOUD_TOKEN: ${{ secrets.TFC_TOKEN }}
-  #     #   INFRACOST_TERRAFORM_CLOUD_HOST: app.terraform.io # Change this if you're using Terraform Enterprise
+      - name: Replace slashes with dashes
+        id: replace-slashes
+        run: |
+          echo folder_name=$(echo "${{ matrix.folder }}" | awk '{gsub("/", "-"); print}') | tee -a $GITHUB_OUTPUT
 
-  #   steps:
-  #     # If you use private modules, add an environment variable or secret
-  #     # called GIT_SSH_KEY with your private key, so Infracost can access
-  #     # private repositories (similar to how Terraform/Terragrunt does).
-  #     # - name: add GIT_SSH_KEY
-  #     #   run: |
-  #     #     ssh-agent -a $SSH_AUTH_SOCK
-  #     #     mkdir -p ~/.ssh
-  #     #     echo "${{ secrets.GIT_SSH_KEY }}" | tr -d '\r' | ssh-add -
-  #     #     ssh-keyscan github.com >> ~/.ssh/known_hosts
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v2
+        # See https://github.com/infracost/actions/tree/master/setup for other inputs
+        # If you can't use this action, see Docker images in https://infracost.io/cicd
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-  #     - name: Setup Infracost
-  #       uses: infracost/actions/setup@v2
-  #       # See https://github.com/infracost/actions/tree/master/setup for other inputs
-  #       # If you can't use this action, see Docker images in https://infracost.io/cicd
-  #       with:
-  #         api-key: ${{ secrets.INFRACOST_API_KEY }}
+      - name: Checkout branch 'PR'
+        uses: actions/checkout@v4
 
-  #     # Checkout the base branch of the pull request (e.g. main/master).
-  #     - name: Checkout base branch
-  #       uses: actions/checkout@v3
-  #       with:
-  #         ref: '${{ github.event.pull_request.base.ref }}'
+      - name: Checkout branch 'main'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: tmp/
+      #Print /tmp
+      - name: Print tmp
+        run: ls -la tmp
+      # Generate Infracost JSON file as the baseline.
+      - name: Generate Infracost cost estimate baseline
+        run: |
+          infracost breakdown --path=tmp/${{ matrix.folder }} \
+            --format=json \
+            --out-file=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json
 
-  #     # Generate Infracost JSON file as the baseline.
-  #     - name: Generate Infracost cost estimate baseline
-  #       run: |
-  #         infracost breakdown --path=${TF_ROOT} \
-  #                             --format=json \
-  #                             --out-file=/tmp/infracost-base.json
+      # Generate an Infracost diff and save it to a JSON file.
+      - name: Generate Infracost diff
+        run: |
+          infracost diff --path=${{ matrix.folder }} \
+            --format=json \
+            --compare-to=/tmp/infracost-base-${{steps.replace-slashes.outputs.folder_name}}.json \
+            --out-file=/tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
 
-  #     # Checkout the current PR branch so we can create a diff.
-  #     - name: Checkout PR branch
-  #       uses: actions/checkout@v3
-
-  #     # Generate an Infracost diff and save it to a JSON file.
-  #     - name: Generate Infracost diff
-  #       run: |
-  #         infracost diff --path=${TF_ROOT} \
-  #                         --format=json \
-  #                         --compare-to=/tmp/infracost-base.json \
-  #                         --out-file=/tmp/infracost.json
-
-  #     # Posts a comment to the PR using the 'update' behavior.
-  #     # This creates a single comment and updates it. The "quietest" option.
-  #     # The other valid behaviors are:
-  #     #   delete-and-new - Delete previous comments and create a new one.
-  #     #   hide-and-new - Minimize previous comments and create a new one.
-  #     #   new - Create a new cost estimate comment on every push.
-  #     # See https://www.infracost.io/docs/features/cli_commands/#comment-on-pull-requests for other options.
-  #     - name: Post Infracost comment
-  #       run: |
-  #           infracost comment github --path=/tmp/infracost.json \
-  #                                    --repo=$GITHUB_REPOSITORY \
-  #                                    --github-token=${{github.token}} \
-  #                                    --pull-request=${{github.event.pull_request.number}} \
-  #                                    --behavior=update
+      # Print /tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
+      - name: Print /tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
+        run: cat /tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json
+      # Posts a comment to the PR using the 'update' behavior.
+      # This creates a single comment and updates it. The "quietest" option.
+      # The other valid behaviors are:
+      #   delete-and-new - Delete previous comments and create a new one.
+      #   hide-and-new - Minimize previous comments and create a new one.
+      #   new - Create a new cost estimate comment on every push.
+      # See https://www.infracost.io/docs/features/cli_commands/#comment-on-pull-requests for other options.
+      - name: Post Infracost comment
+        run: |
+          infracost comment github --path=/tmp/infracost-${{steps.replace-slashes.outputs.folder_name}}.json \
+                                   --repo=$GITHUB_REPOSITORY \
+                                   --github-token=${{github.token}} \
+                                   --pull-request=${{github.event.pull_request.number}} \
+                                   --behavior=new
